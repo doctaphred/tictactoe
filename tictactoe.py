@@ -106,6 +106,18 @@ class TicTacToe:
 
         self.active_player = next(self.turns)
 
+    def play(self):
+        print(self.board)
+        while True:
+            try:
+                self.move()
+            except Victory as victory:
+                return victory.winner
+            except GameOver:
+                return None
+            finally:
+                print(self.board)
+
 
 class Player:
 
