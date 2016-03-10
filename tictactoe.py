@@ -1,3 +1,4 @@
+import random
 from collections import ChainMap
 from itertools import cycle
 
@@ -121,7 +122,9 @@ class Player:
 class RandomPlayer(Player):
 
     def get_move(self, board):
-        for loc in board.board.keys():
+        locs = list(board.board.keys())
+        random.shuffle(locs)
+        for loc in locs:
             try:
                 board.move(loc, self.label)
             except ValueError:
