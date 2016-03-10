@@ -146,6 +146,14 @@ class RandomPlayer(Player):
         raise ValueError('No valid move found')
 
 
+def play():
+    x = RandomPlayer('x')
+    o = RandomPlayer('o')
+    game = TicTacToe.new(3, [x, o])
+    winner = game.play()
+    print('Winner:', winner)
+
+
 # Tests: run with py.test or nosetests
 
 
