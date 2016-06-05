@@ -67,7 +67,7 @@ class TicTacToeBoard:
 
         checks = [
             {(r, c) for (r, c) in self.board.keys() if r == c},
-            {(r, c) for (r, c) in self.board.keys() if r == size - c},
+            {(r, c) for (r, c) in self.board.keys() if r == size - 1 - c},
             ]
 
         for i in range(size):
