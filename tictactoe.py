@@ -179,6 +179,16 @@ def test_tictactoeboard():
     moved_board = board.move((2, 2), 'x')
     yield assert_equal, str(moved_board), str(full_board)
 
+    problem = """\
+        o..
+        xox
+        .x.
+        """
+    problem_board = TicTacToeBoard.from_str(problem)
+    yield assert_equal, problem_board.full(), False
+    yield assert_equal, problem_board.victory(), False
+    yield assert_equal, problem_board.game_over(), False
+
     yield assert_equal, full_board.full(), True
     yield assert_equal, board.full(), False
 
