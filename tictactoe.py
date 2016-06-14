@@ -4,17 +4,47 @@ from itertools import cycle
 
 
 class GameOver(Exception):
-    winner = None
+
+    def __init__(self, **scores):
+        super().__init__('Game over: {}'.format(scores))
+        self.scores = scores
+
+    @classmethod
+    def victory(cls, labels, winner):
+        return cls(**{label: int(label == winner) for label in labels})
+
+    @classmethod
+    def draw(cls, labels):
+        return cls(**{label: 0 for label in labels})
 
 
-class Victory(GameOver):
+class Forfeit(Exception):
 
-    def __init__(self, winner):
-        self.winner = winner
-        super().__init__('Winner: {}'.format(winner))
+    def __init__(self, loser, reason=None):
+        super().__init__('{} forfeited! Reason: {}'.format(loser, reason))
+        self.loser = loser
 
 
-class TicTacToeBoard:
+class MoveError(ValueError):
+    pass
+
+
+class InvalidLocation(MoveError):
+
+    def __init__(self, loc):
+        self.loc = loc
+        super().__init__('invalid location: {}'.format(loc))
+
+
+class AlreadyOccupied(MoveError):
+
+    def __init__(self, loc, contents):
+        self.loc = loc
+        self.contents = contents
+        super().__init__('{} already contains {}'.format(loc, contents))
+
+
+class TicTacToeState:
 
     def __init__(self, board):
         self.board = board
@@ -49,10 +79,10 @@ class TicTacToeBoard:
         try:
             data = self.board[loc]
         except KeyError:
-            raise ValueError('invalid location: {}'.format(loc))
+            raise InvalidLocation(loc)
 
         if data is not None:
-            raise ValueError('{} already contains {}'.format(loc, data))
+            raise AlreadyOccupied(loc, data)
 
         return self.__class__(self.board.new_child({loc: label}))
 
@@ -82,53 +112,89 @@ class TicTacToeBoard:
         return False
 
 
-class TicTacToe:
+class Game:
 
-    def __init__(self, board, players):
-        self.board = board
+    def __init__(self, initial_state, players, labels):
+        self.states = [initial_state]
         self.players = players
-        self.turns = cycle(players)
-        self.active_player = next(self.turns)
+        self.labels = labels
+        self.turns = cycle(zip(players, labels))
 
-    @classmethod
-    def new(cls, size, players):
-        return cls(TicTacToeBoard.new(size), players)
+    def setup(self):
+        for player, label in zip(self.players, self.labels):
+            player.setup(label)
+
+    def current_state(self):
+        return self.states[-1]
+
+    def victory(self, winner):
+        pass
+
+    def draw(self, loser):
+        pass
 
     def move(self):
-        loc = self.active_player.get_move(self.board)
-        label = self.active_player.label
-        self.board = self.board.move(loc, label)
-        if self.board.game_over():
-            if self.board.victory():
-                raise Victory(self.active_player)
-            else:
-                raise GameOver
+        player, label = next(self.turns)
+        state = self.current_state()
 
-        self.active_player = next(self.turns)
+        try:
+            move = player.get_move(state)
+        except Exception as e:
+            raise Forfeit(player, e)
+
+        try:
+            new_state = state.move(move, label)
+        except MoveError as e:
+            raise Forfeit(player, e)
+
+        self.states.append(new_state)
+
+        for player in self.players:
+            try:
+                player.observe(state, label, move, new_state)
+            except Exception as e:
+                raise Forfeit(player, e)
+
+        if new_state.game_over():
+            if new_state.victory():
+                raise GameOver.victory(self.labels, label)
+            else:
+                raise GameOver.draw(self.labels)
+
+        return new_state
 
     def play(self):
-        print(self.board)
+        print(self.current_state())
+        self.setup()
         while True:
             try:
                 self.move()
-            except Victory as victory:
-                return victory.winner
-            except GameOver:
-                return None
+            except GameOver as result:
+                return result.scores
             finally:
-                print(self.board)
+                print(self.current_state())
 
 
 class Player:
 
-    def __init__(self, label):
-        self.label = label
-
     def __str__(self):
-        return self.label
+        return 'Player {}'.format(self.label)
+
+    def setup(self, label):
+        self.label = label
 
     def get_move(self, board):
         raise NotImplementedError
+
+    def observe(self, board, label, move, new_board):
+        pass
+
+
+class TicTacToeGame(Game):
+
+    @classmethod
+    def new(cls, *players, labels='xo', size=3):
+        return cls(TicTacToeState.new(size), players, labels)
 
 
 class RandomPlayer(Player):
@@ -147,11 +213,9 @@ class RandomPlayer(Player):
 
 
 def play():
-    x = RandomPlayer('x')
-    o = RandomPlayer('o')
-    game = TicTacToe.new(3, [x, o])
-    winner = game.play()
-    print('Winner:', winner)
+    game = TicTacToeGame.new(RandomPlayer(), RandomPlayer())
+    scores = game.play()
+    print('Scores:', scores)
 
 
 # Tests: run with py.test or nosetests
@@ -161,13 +225,17 @@ def assert_equal(a, b):
     assert a == b
 
 
+def assert_true(a):
+    assert a
+
+
 def test_tictactoeboard():
     board_str = """\
         xox
         oxo
         ox.
         """
-    board = TicTacToeBoard.from_str(board_str)
+    board = TicTacToeState.from_str(board_str)
     yield assert_equal, str(board).split(), board_str.split()
 
     full_str = """\
@@ -175,7 +243,7 @@ def test_tictactoeboard():
         oxo
         oxx
         """
-    full_board = TicTacToeBoard.from_str(full_str)
+    full_board = TicTacToeState.from_str(full_str)
     moved_board = board.move((2, 2), 'x')
     yield assert_equal, str(moved_board), str(full_board)
 
@@ -184,7 +252,7 @@ def test_tictactoeboard():
         xox
         .x.
         """
-    problem_board = TicTacToeBoard.from_str(problem)
+    problem_board = TicTacToeState.from_str(problem)
     yield assert_equal, problem_board.full(), False
     yield assert_equal, problem_board.victory(), False
     yield assert_equal, problem_board.game_over(), False
